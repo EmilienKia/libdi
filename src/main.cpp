@@ -19,6 +19,8 @@
 
 #include <iostream>
 
+#include <map>
+
 #include "di.hpp"
 
 #include "service01.hpp"
@@ -31,17 +33,19 @@ class IntegratedHelloServiceImpl : public HelloService
 {
 public:
 	IntegratedHelloServiceImpl() = default;
+	IntegratedHelloServiceImpl(const std::string& str):_str(str){}
 	virtual ~IntegratedHelloServiceImpl() = default;
 
 	virtual void sayHello(const std::string& name)const;
 	virtual size_t count();
 private:
 	size_t _count;
+	std::string _str = "<<default>>";
 };
 
 void IntegratedHelloServiceImpl::sayHello(const std::string& name)const
 {
-	std::cout << "(integrated) Hello " << name << " !" << std::endl;
+	std::cout << "(integrated) Hello " << _str << " " << name << " !" << std::endl;
 }
 
 size_t IntegratedHelloServiceImpl::count()
@@ -49,7 +53,7 @@ size_t IntegratedHelloServiceImpl::count()
 	return _count++;
 }
 
-di::component_instance<IntegratedHelloServiceImpl> IntegratedHello;
+di::component_instance<IntegratedHelloServiceImpl> IntegratedHello {"hello", {{"Titi", "Toto"}}, "big" };
 
 
 //
@@ -65,7 +69,7 @@ public:
 	}
 };
 
-di::component_instance<TotoServiceImpl> TotoServiceImplInstance;
+di::component_instance<TotoServiceImpl> TotoServiceImplInstance {"toto", {{"Titi", "Toto"}} };
 
 
 //
@@ -102,9 +106,49 @@ void dump()
 }
 
 
+void dumpRegistry()
+{
+	di::registry& registry = di::registry::get();
+	std::cout << "Registry: " << registry.size()  << std::endl;
+
+	{
+		for(auto& comp : registry)
+		{
+			std::cout
+				<< comp.id << " "
+				<< comp.name << " "
+				<< comp.comp.get()
+				<< std::endl;
+			for(auto prop : comp.prop)
+			{
+				std::cout << "  " << prop.first << " : " << prop.second << std::endl;
+			}
+		}
+	}
+}
+
+
+
 int main()
 {
 	std::cout << "Hello world!" << std::endl;
+
+
+	std::map<std::string, std::string> map{{"titi", "toto"}, {"Boule", "Bill"}};
+
+	for(auto it : map)
+	{
+		std::cout << " - " << it.first << " / " << it.second << std::endl;
+	}
+	std::cout << std::endl;
+	
+	map.insert({{"plic", "ploc"}, {"tarte", "enpion"}});
+	for(auto it : map)
+	{
+		std::cout << " - " << it.first << " / " << it.second << std::endl;
+	}
+	std::cout << std::endl;
+	
 
 	std::cout << ">> " << IntegratedHello.name() << std::endl;
 
@@ -116,13 +160,22 @@ int main()
 
 	std::cout << "===== STATIC =====" << std::endl;
 	dump();
-
 	
 	std::cout << "===== LOADED =====" << std::endl;
 	registry.load("module01");
 	registry.load("module02");
 	dump();
 
+	std::cout << std::endl << std::endl;
+	dumpRegistry();
+	std::cout << std::endl << std::endl;
+
+	for(auto it : registry.find_all_if<di::component>([](const di::component_descriptor& desc){std::cout << desc.name << std::endl; return desc.name == "hello";}))
+	{
+		std::cout << it.get() << std::endl;
+	}
+	
+	
 	return 0;
 }
 

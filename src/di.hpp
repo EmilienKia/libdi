@@ -22,6 +22,7 @@
 
 #include <cstddef>
 #include <iostream>
+#include <map>
 #include <memory>
 #include <string>
 #include <vector>
@@ -49,16 +50,34 @@ public:
  * - a unique numeric identifier 'id'
  * - a name 'name', which should be unique
  * - its shared pointer 'comp'
+ * - a key/value property map 'prop'
  */
 struct component_descriptor
 {
+	typedef std::initializer_list<std::pair<const std::string, std::string>> str_str_init;
+
+	
 	component_id id;
 	std::string name;
 	std::shared_ptr<di::component> comp;
+	std::map<std::string, std::string> prop;
 
-	component_descriptor(component_id id, const std::string& name, std::shared_ptr<component> comp):
+	explicit component_descriptor(component_id id, const std::string& name, std::shared_ptr<component> comp):
 	id(id), name(name), comp(comp)
 	{}
+
+	explicit component_descriptor(component_id id, const std::string& name, std::shared_ptr<component> comp, const std::map<std::string, std::string>& prop):
+	id(id), name(name), comp(comp), prop(prop)
+	{}
+
+	explicit component_descriptor(component_id id, const std::string& name, std::shared_ptr<component> comp, std::map<std::string, std::string>&& prop):
+	id(id), name(name), comp(comp), prop(std::move(prop))
+	{}
+
+	explicit component_descriptor(component_id id, const std::string& name, std::shared_ptr<component> comp, str_str_init prop):
+	id(id), name(name), comp(comp), prop(prop)
+	{}
+
 };
 
 /**
@@ -75,6 +94,8 @@ public:
 	typedef typename comp_holder::reverse_iterator reverse_iterator;
 	typedef typename comp_holder::const_reverse_iterator const_reverse_iterator;
 
+	typedef std::initializer_list<std::pair<const std::string, std::string>> str_str_init;
+	
 	/**
 	 * Retrieve registry singleton.
 	 */
@@ -120,6 +141,10 @@ public:
 	 * Register a new component.
 	 */	
 	const_iterator set(const std::string& name, std::shared_ptr<component> comp);
+	const_iterator set(const std::string& name, std::shared_ptr<component> comp, const std::map<std::string, std::string>& prop);
+	const_iterator set(const std::string& name, std::shared_ptr<component> comp, std::map<std::string, std::string>&& prop);
+	const_iterator set(const std::string& name, std::shared_ptr<component> comp, str_str_init prop);
+	
 	/**
 	 * Unregister an already registered component.
 	 */
@@ -128,31 +153,30 @@ public:
 	/**
 	 * Find a component from a type.
 	 */
-	template<typename C>
-	std::shared_ptr<C> find()
+	template<typename T>
+	std::shared_ptr<T> find()
 	{
 		for(const_iterator it = begin(); it!=end(); ++it)
 		{
-			std::shared_ptr<C> ptr = std::dynamic_pointer_cast<C>(it->comp);
+			std::shared_ptr<T> ptr = std::dynamic_pointer_cast<T>(it->comp);
 			if(ptr)
 			{
 				return ptr;
 			}
 		}
-		return std::shared_ptr<C>();
-		
+		return std::shared_ptr<T>();
 	}
 
 	/**
-	 * Find a liszt of components from a type.
+	 * Find a list of components from a type.
 	 */
-	template<typename C>
-	std::vector<std::shared_ptr<C>> find_all()
+	template<typename T>
+	std::vector<std::shared_ptr<T>> find_all()
 	{
-		std::vector<std::shared_ptr<C>> res;
+		std::vector<std::shared_ptr<T>> res;
 		for(const_iterator it = begin(); it!=end(); ++it)
 		{
-			std::shared_ptr<C> ptr = std::dynamic_pointer_cast<C>(it->comp);
+			std::shared_ptr<T> ptr = std::dynamic_pointer_cast<T>(it->comp);
 			if(ptr)
 			{
 				res.emplace_back(ptr);
@@ -161,6 +185,41 @@ public:
 		return res;		
 	}
 
+	/**
+	 * Find a component from a type and a predicate.
+	 */
+	template<typename T, typename UnaryPredicate>
+	std::shared_ptr<T> find_if(UnaryPredicate p)
+	{
+		for(const_iterator it = begin(); it!=end(); ++it)
+		{
+			std::shared_ptr<T> ptr = std::dynamic_pointer_cast<T>(it->comp);
+			if(ptr && p(*it))
+			{
+				return ptr;
+			}
+		}
+		return std::shared_ptr<T>();
+	}
+
+	/**
+	 * Find a list of components from a type and a predicate.
+	 */
+	template<typename T, typename UnaryPredicate>
+	std::vector<std::shared_ptr<T>> find_all_if(UnaryPredicate p)
+	{
+		std::vector<std::shared_ptr<T>> res;
+		for(const_iterator it = begin(); it!=end(); ++it)
+		{
+			std::shared_ptr<T> ptr = std::dynamic_pointer_cast<T>(it->comp);
+			if(ptr && p(*it))
+			{
+				res.emplace_back(ptr);
+			}
+		}
+		return res;
+	}
+	
 	/**
 	 * Load a library (and register all component instances).
 	 */
@@ -190,36 +249,76 @@ public:
 	typedef C component_type;
 	typedef std::shared_ptr<C> component_ptr;
 
-	explicit component_instance(const std::string& name):component_instance(name, std::make_shared<component_type>())
-	{
-	}
+	typedef std::initializer_list<std::pair<const std::string, std::string>> str_str_init;
 
-	explicit component_instance(const std::string& name, C* comp):component_instance(name, std::shared_ptr<component_type>(comp))
+	component_instance():component_instance(typeid(component_type).name(), std::make_shared<component_type>())
 	{
 	}
 	
-	explicit component_instance():component_instance(typeid(component_type).name(), std::make_shared<component_type>())
+	component_instance(const std::string& name):component_instance(name, std::make_shared<component_type>())
 	{
 	}
 
-	explicit component_instance(C* comp):component_instance(typeid(component_type).name(), std::shared_ptr<component_type>(comp))
+	component_instance(const std::string& name, C* comp):component_instance(name, std::shared_ptr<component_type>(comp))
 	{
 	}
 
-	explicit component_instance(component_ptr comp):component_instance(typeid(component_type).name(), comp)
+	component_instance(C* comp):component_instance(typeid(component_type).name(), std::shared_ptr<component_type>(comp))
 	{
 	}
+
+	component_instance(component_ptr comp):component_instance(typeid(component_type).name(), comp)
+	{
+	}
+
+
 	
-	explicit component_instance(const std::string& name, component_ptr comp):
+	component_instance(const std::string& name, component_ptr comp):
 		_name(name),_instance(comp)
 	{
 		_id = registry::get().set(_name, comp)->id;
 	}
 
+	component_instance(const std::string& name, component_ptr comp, const std::map<std::string, std::string>& prop):
+		_name(name),_instance(comp)
+	{
+		_id = registry::get().set(_name, comp, prop)->id;
+	}
+
+	component_instance(const std::string& name, component_ptr comp, std::map<std::string, std::string>&& prop):
+		_name(name),_instance(comp)
+	{
+		_id = registry::get().set(_name, comp, prop)->id;
+	}
+
+	component_instance(const std::string& name, component_ptr comp, str_str_init& prop):
+		_name(name),_instance(comp)
+	{
+		_id = registry::get().set(_name, comp, prop)->id;
+	}
+
+
+
 	template<class... Args >
 	component_instance(const std::string& name, Args&&... args):component_instance(name, std::make_shared<component_type>(args...))
 	{
 	}
+
+	template<class... Args >
+	component_instance(const std::string& name, const std::map<std::string, std::string>& prop, Args&&... args):component_instance(name, std::make_shared<component_type>(args...), prop)
+	{
+	}
+
+	template<class... Args >
+	component_instance(const std::string& name, std::map<std::string, std::string>&& prop, Args&&... args):component_instance(name, std::make_shared<component_type>(args...), prop)
+	{
+	}
+
+	template<class... Args >
+	component_instance(const std::string& name, str_str_init prop, Args&&... args):component_instance(name, std::make_shared<component_type>(args...), prop)
+	{
+	}
+
 
 	~component_instance()
 	{

@@ -139,10 +139,24 @@ registry::const_reverse_iterator registry::crend()const
 	return _components.crend();
 }
 
-registry::const_iterator registry::set(const std::string& name, std::shared_ptr<component> component)
+registry::const_iterator registry::set(const std::string& name, std::shared_ptr<component> comp)
 {
-	_components.emplace_back(_idcount++, name, component);
-	return --end();
+	return _components.emplace(_components.end(), _idcount++, name, comp);
+}
+
+registry::const_iterator registry::set(const std::string& name, std::shared_ptr<component> comp, const std::map<std::string, std::string>& prop)
+{
+	return _components.emplace(_components.end(), _idcount++, name, comp, prop);
+}
+
+registry::const_iterator registry::set(const std::string& name, std::shared_ptr<component> comp, std::map<std::string, std::string>&& prop)
+{
+	return _components.emplace(_components.end(), _idcount++, name, comp, prop);
+}
+
+registry::const_iterator registry::set(const std::string& name, std::shared_ptr<component> comp, registry::str_str_init prop)
+{
+	return _components.emplace(_components.end(), _idcount++, name, comp, prop);
 }
 
 void registry::erase(registry::const_iterator it)

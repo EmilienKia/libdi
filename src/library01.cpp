@@ -45,7 +45,7 @@ size_t HelloServiceImpl::count()
 	return 42;
 }
 
-di::component_instance<HelloServiceImpl> hello;
+di::component_instance<HelloServiceImpl> hello("lib01-hello", {{"titi", "toto"}, {"tata", "tutu"}});
 
 
 
