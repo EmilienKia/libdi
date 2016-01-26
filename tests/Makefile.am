@@ -5,7 +5,7 @@ AM_CFLAGS = -Wall -g
 
 AM_CPPFLAGS = -I../src
 
-noinst_PROGRAMS = depinj
+bin_PROGRAMS = depinj
 
 depinj_SOURCES = \
 	main.cpp \
@@ -14,7 +14,7 @@ depinj_SOURCES = \
 depinj_LDADD = liblibrary01.la ../src/libdi.la 
 
 
-noinst_LTLIBRARIES =  \
+lib_LTLIBRARIES =  \
 	module01.la \
 	module02.la \
 	liblibrary01.la \

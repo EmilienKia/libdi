@@ -32,21 +32,42 @@ namespace di
 // Registry
 //
 
+component_id registry::_idcount = 0;
+std::vector<registry*> registry::_registries;
 registry registry::_singleton;
 
 registry::registry()
 {
-	if(lt_dlinit()!=0)
+	if(_registries.size()==0)
 	{
-		std::cerr << "Error while initializing libltdl" << std::endl;
+		if(lt_dlinit()!=0)
+		{
+			std::cerr << "Error while initializing libltdl" << std::endl;
+		}
 	}
+	_registries.push_back(this);
 }
 		
 registry::~registry()
 {
-	if(lt_dlexit()!=0)
+	for(auto it = _registries.begin(); it!=_registries.end();)
 	{
-		std::cerr << "Error while exiting libltdl" << std::endl;
+		if(*it == this)
+		{
+			_registries.erase(it);
+		}
+		else
+		{
+			++it;
+		}
+	}
+
+	if(_registries.size()==0)
+	{
+		if(lt_dlexit()!=0)
+		{
+			std::cerr << "Error while exiting libltdl" << std::endl;
+		}
 	}
 }
 	
@@ -60,7 +81,7 @@ std::size_t registry::size()const
 	return _components.size();
 }
 
-std::shared_ptr<component> registry::get(component_id id) const
+component_ptr_t registry::get(component_id id) const
 {
 	for(auto comp : _components)
 	{
@@ -69,10 +90,10 @@ std::shared_ptr<component> registry::get(component_id id) const
 			return comp.comp;
 		}
 	}
-	return std::shared_ptr<component>();
+	return component_ptr_t();
 }
 
-std::shared_ptr<component> registry::get(const std::string& name) const
+component_ptr_t registry::get(const std::string& name) const
 {
 	for(auto comp : _components)
 	{
@@ -81,7 +102,7 @@ std::shared_ptr<component> registry::get(const std::string& name) const
 			return comp.comp;
 		}
 	}
-	return std::shared_ptr<component>();
+	return component_ptr_t();
 }
 
 registry::const_iterator registry::find(component_id id) const
@@ -139,22 +160,32 @@ registry::const_reverse_iterator registry::crend()const
 	return _components.crend();
 }
 
-registry::const_iterator registry::set(const std::string& name, std::shared_ptr<component> comp)
+registry::const_iterator registry::set(const component_descriptor& desc)
+{
+	return _components.emplace(_components.end(), _idcount++, desc.name, desc.comp, desc.prop);
+}
+
+registry::const_iterator registry::set(component_descriptor&& desc)
+{
+	return _components.emplace(_components.end(), _idcount++, std::move(desc.name), std::move(desc.comp), std::move(desc.prop));
+}
+
+registry::const_iterator registry::set(const std::string& name, component_ptr_t comp)
 {
 	return _components.emplace(_components.end(), _idcount++, name, comp);
 }
 
-registry::const_iterator registry::set(const std::string& name, std::shared_ptr<component> comp, const std::map<std::string, std::string>& prop)
+registry::const_iterator registry::set(const std::string& name, component_ptr_t comp, const properties_t& prop)
 {
 	return _components.emplace(_components.end(), _idcount++, name, comp, prop);
 }
 
-registry::const_iterator registry::set(const std::string& name, std::shared_ptr<component> comp, std::map<std::string, std::string>&& prop)
+registry::const_iterator registry::set(const std::string& name, component_ptr_t comp, properties_t&& prop)
 {
 	return _components.emplace(_components.end(), _idcount++, name, comp, prop);
 }
 
-registry::const_iterator registry::set(const std::string& name, std::shared_ptr<component> comp, registry::str_str_init prop)
+registry::const_iterator registry::set(const std::string& name, component_ptr_t comp, properties_init_list_t prop)
 {
 	return _components.emplace(_components.end(), _idcount++, name, comp, prop);
 }
@@ -167,13 +198,101 @@ void registry::erase(registry::const_iterator it)
 	}
 }
 
+void registry::erase(component_id id)
+{
+	for(registry* reg : _registries)
+	{
+		if(reg!=nullptr && reg->_components.size()>0)
+		{
+			for(auto it = reg->_components.begin(); it != reg->_components.end(); )
+			{
+				if(it->id == id)
+				{
+					reg->erase(it);
+				}
+				else
+				{
+					++it;
+				}
+			}
+		}
+	}
+}
+
 void registry::load(const std::string& path)
 {
+	component_loader::locker lock(*this);
+	
 	lt_dlhandle handle = lt_dlopenext(path.c_str());
 	if(handle==nullptr)
 	{
 		std::cerr << "Error while loading " << path << std::endl;
 	}
 }
+
+
+
+//
+// component_loader 
+//
+
+std::stack<registry*> component_loader::_registries;
+
+void component_loader::push_registry(registry& reg)
+{
+	_registries.push(&reg);
+}
+
+void component_loader::pop_registry()
+{
+	_registries.pop();
+}
+
+component_id component_loader::set(const component_descriptor& desc)
+{
+	return ( _registries.empty() ? &registry::get() : _registries.top() )->set(desc)->id;
+}
+
+component_id component_loader::set(component_descriptor&& desc)
+{
+	return ( _registries.empty() ? &registry::get() : _registries.top() )->set(desc)->id;
+}
+
+component_id component_loader::set(const std::string& name, component_ptr_t comp)
+{
+	return ( _registries.empty() ? &registry::get() : _registries.top() )->set(name, comp)->id;
+}
+
+component_id component_loader::set(const std::string& name, component_ptr_t comp, const properties_t& prop)
+{
+	return ( _registries.empty() ? &registry::get() : _registries.top() )->set(name, comp, prop)->id;
+}
+
+component_id component_loader::set(const std::string& name, component_ptr_t comp, properties_t&& prop)
+{
+	return ( _registries.empty() ? &registry::get() : _registries.top() )->set(name, comp, prop)->id;
+}
+
+component_id component_loader::set(const std::string& name, component_ptr_t comp, properties_init_list_t prop)
+{
+	return ( _registries.empty() ? &registry::get() : _registries.top() )->set(name, comp, prop)->id;
+}
+
+//
+// component_loader::locker
+//
+
+component_loader::locker::locker(registry& reg)
+{
+	component_loader::push_registry(reg);
+}
+
+component_loader::locker::~locker()
+{
+	component_loader::pop_registry();
+}
+
+
+
 
 } // namespace di

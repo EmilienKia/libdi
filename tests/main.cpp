@@ -106,13 +106,12 @@ void dump()
 }
 
 
-void dumpRegistry()
+void dumpRegistry(di::registry& reg)
 {
-	di::registry& registry = di::registry::get();
-	std::cout << "Registry: " << registry.size()  << std::endl;
+	std::cout << "Registry: " << reg.size()  << std::endl;
 
 	{
-		for(auto& comp : registry)
+		for(auto& comp : reg)
 		{
 			std::cout
 				<< comp.id << " "
@@ -134,48 +133,26 @@ int main()
 	std::cout << "Hello world!" << std::endl;
 
 
-	std::map<std::string, std::string> map{{"titi", "toto"}, {"Boule", "Bill"}};
-
-	for(auto it : map)
-	{
-		std::cout << " - " << it.first << " / " << it.second << std::endl;
-	}
-	std::cout << std::endl;
-	
-	map.insert({{"plic", "ploc"}, {"tarte", "enpion"}});
-	for(auto it : map)
-	{
-		std::cout << " - " << it.first << " / " << it.second << std::endl;
-	}
-	std::cout << std::endl;
-	
-
-	std::cout << ">> " << IntegratedHello.name() << std::endl;
-
-	
 	test();
 
-	di::registry& registry = di::registry::get();
-
-
 	std::cout << "===== STATIC =====" << std::endl;
-	dump();
+	dumpRegistry(di::registry::get());
+	std::cout << std::endl << std::endl;
+
 	
 	std::cout << "===== LOADED =====" << std::endl;
-	registry.load("module01");
-	registry.load("module02");
-	dump();
-
+	di::registry reg;
+	reg.load("module01");
+	reg.load("module02");
+	dumpRegistry(reg);
 	std::cout << std::endl << std::endl;
-	dumpRegistry();
-	std::cout << std::endl << std::endl;
+	
 
-	for(auto it : registry.find_all_if<di::component>([](const di::component_descriptor& desc){std::cout << desc.name << std::endl; return desc.name == "hello";}))
+	for(auto it : reg.find_all_if<di::component>([](const di::component_descriptor& desc){std::cout << desc.name << std::endl; return desc.name == "hello";}))
 	{
 		std::cout << it.get() << std::endl;
 	}
-	
-	
+
 	return 0;
 }
 

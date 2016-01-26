@@ -24,13 +24,12 @@
 #include <iostream>
 #include <map>
 #include <memory>
+#include <stack>
 #include <string>
 #include <vector>
 
 namespace di
 {
-
-typedef size_t component_id;
 
 /**
  * Base component class.
@@ -43,6 +42,11 @@ public:
 	virtual ~component() = default;
 };
 
+typedef ssize_t component_id;
+typedef std::shared_ptr<di::component> component_ptr_t;
+typedef std::map<std::string, std::string> properties_t;
+typedef std::initializer_list<std::pair<const std::string, std::string>> properties_init_list_t;
+
 /**
  * Component descriptor.
  * Internal structure used to keep component properties in registry.
@@ -54,50 +58,76 @@ public:
  */
 struct component_descriptor
 {
-	typedef std::initializer_list<std::pair<const std::string, std::string>> str_str_init;
+	component_id    id;
+	std::string     name;
+	component_ptr_t comp;
+	properties_t    prop;
 
-	
-	component_id id;
-	std::string name;
-	std::shared_ptr<di::component> comp;
-	std::map<std::string, std::string> prop;
-
-	explicit component_descriptor(component_id id, const std::string& name, std::shared_ptr<component> comp):
+	component_descriptor(component_id id, const std::string& name, component_ptr_t comp):
 	id(id), name(name), comp(comp)
 	{}
 
-	explicit component_descriptor(component_id id, const std::string& name, std::shared_ptr<component> comp, const std::map<std::string, std::string>& prop):
+	component_descriptor(component_id id, const std::string& name, component_ptr_t comp, const properties_t& prop):
 	id(id), name(name), comp(comp), prop(prop)
 	{}
 
-	explicit component_descriptor(component_id id, const std::string& name, std::shared_ptr<component> comp, std::map<std::string, std::string>&& prop):
+	component_descriptor(component_id id, const std::string& name, component_ptr_t comp, properties_t&& prop):
 	id(id), name(name), comp(comp), prop(std::move(prop))
 	{}
 
-	explicit component_descriptor(component_id id, const std::string& name, std::shared_ptr<component> comp, str_str_init prop):
+	component_descriptor(component_id id, const std::string& name, component_ptr_t comp, properties_init_list_t prop):
 	id(id), name(name), comp(comp), prop(prop)
 	{}
+
+
+	component_descriptor(const component_descriptor& desc):
+		id(desc.id), name(desc.name), comp(desc.comp), prop(desc.prop)
+	{}
+
+	component_descriptor(component_descriptor&& desc):
+		id(desc.id), name(std::move(desc.name)), comp(std::move(desc.comp)), prop(std::move(desc.prop))
+	{}
+
+	component_descriptor& operator = (const component_descriptor& desc)
+	{
+		id = desc.id;
+		name = desc.name;
+		comp = desc.comp;
+		prop = desc.prop;
+		return *this;
+	}
+		
+	component_descriptor& operator = (component_descriptor&& desc)
+	{
+		id = desc.id;
+		name = std::move(desc.name);
+		comp = std::move(desc.comp);
+		prop = std::move(desc.prop);
+		return *this;
+	}
+
+	
 
 };
 
 /**
  * Component registry.
- * Central container which holds components.
+ * Container which holds components.
  */
 class registry
 {
 public:
+	registry();
+	~registry();
 
 	typedef std::vector<component_descriptor> comp_holder;
 	typedef typename comp_holder::iterator iterator;
 	typedef typename comp_holder::const_iterator const_iterator;
 	typedef typename comp_holder::reverse_iterator reverse_iterator;
 	typedef typename comp_holder::const_reverse_iterator const_reverse_iterator;
-
-	typedef std::initializer_list<std::pair<const std::string, std::string>> str_str_init;
 	
 	/**
-	 * Retrieve registry singleton.
+	 * Retrieve default registry singleton.
 	 */
 	static registry& get();
 
@@ -109,11 +139,11 @@ public:
 	/**
 	 * Find a component from its unique id.
 	 */
-	std::shared_ptr<component> get(component_id id) const;
+	component_ptr_t get(component_id id) const;
 	/**
 	 * Find a component from its name (the first found).
 	 */
-	std::shared_ptr<component> get(const std::string& name) const;
+	component_ptr_t get(const std::string& name) const;
 
 	/**
 	 * Find a component from its unique id.
@@ -140,15 +170,18 @@ public:
 	/**
 	 * Register a new component.
 	 */	
-	const_iterator set(const std::string& name, std::shared_ptr<component> comp);
-	const_iterator set(const std::string& name, std::shared_ptr<component> comp, const std::map<std::string, std::string>& prop);
-	const_iterator set(const std::string& name, std::shared_ptr<component> comp, std::map<std::string, std::string>&& prop);
-	const_iterator set(const std::string& name, std::shared_ptr<component> comp, str_str_init prop);
+	const_iterator set(const component_descriptor& desc);
+	const_iterator set(component_descriptor&& desc);
+	const_iterator set(const std::string& name, component_ptr_t comp);
+	const_iterator set(const std::string& name, component_ptr_t comp, const properties_t& prop);
+	const_iterator set(const std::string& name, component_ptr_t comp, properties_t&& prop);
+	const_iterator set(const std::string& name, component_ptr_t comp, properties_init_list_t prop);
 	
 	/**
 	 * Unregister an already registered component.
 	 */
 	void erase(const_iterator it);
+	static void erase(component_id id);
 
 	/**
 	 * Find a component from a type.
@@ -224,19 +257,45 @@ public:
 	 * Load a library (and register all component instances).
 	 */
 	void load(const std::string& path);
-
-protected:
-	registry();
-	~registry();
 	
 private:
 	comp_holder _components;
-	component_id _idcount = 0;
-
+	static component_id _idcount;
+	static std::vector<registry*> _registries;
 	static registry _singleton;
 };
 
 
+/**
+ * Helper to manage just loaded components from modules.
+ * Should not be used by users.
+ */
+class component_loader
+{
+public:	
+	/**
+	 * Add a new component.
+	 */
+	static component_id set(const component_descriptor& desc);
+	static component_id set(component_descriptor&& desc);
+	static component_id set(const std::string& name, component_ptr_t comp);
+	static component_id set(const std::string& name, component_ptr_t comp, const properties_t& prop);
+	static component_id set(const std::string& name, component_ptr_t comp, properties_t&& prop);
+	static component_id set(const std::string& name, component_ptr_t comp, properties_init_list_t prop);
+
+	static void push_registry(registry& reg);
+	static void pop_registry();
+
+	class locker
+	{
+	public:
+		locker(registry& reg);
+		~locker();
+	};
+	
+private:
+	static std::stack<registry*> _registries;
+};
 
 
 /**
@@ -248,8 +307,6 @@ class component_instance
 public:
 	typedef C component_type;
 	typedef std::shared_ptr<C> component_ptr;
-
-	typedef std::initializer_list<std::pair<const std::string, std::string>> str_str_init;
 
 	component_instance():component_instance(typeid(component_type).name(), std::make_shared<component_type>())
 	{
@@ -270,31 +327,29 @@ public:
 	component_instance(component_ptr comp):component_instance(typeid(component_type).name(), comp)
 	{
 	}
-
-
 	
 	component_instance(const std::string& name, component_ptr comp):
 		_name(name),_instance(comp)
 	{
-		_id = registry::get().set(_name, comp)->id;
+		_id = component_loader::set(_name, comp);
 	}
 
-	component_instance(const std::string& name, component_ptr comp, const std::map<std::string, std::string>& prop):
+	component_instance(const std::string& name, component_ptr comp, const properties_t& prop):
 		_name(name),_instance(comp)
 	{
-		_id = registry::get().set(_name, comp, prop)->id;
+		_id = component_loader::set(_name, comp, prop);		
 	}
 
-	component_instance(const std::string& name, component_ptr comp, std::map<std::string, std::string>&& prop):
+	component_instance(const std::string& name, component_ptr comp, properties_t&& prop):
 		_name(name),_instance(comp)
 	{
-		_id = registry::get().set(_name, comp, prop)->id;
+		_id = component_loader::set(_name, comp, prop);		
 	}
 
-	component_instance(const std::string& name, component_ptr comp, str_str_init& prop):
+	component_instance(const std::string& name, component_ptr comp, properties_init_list_t& prop):
 		_name(name),_instance(comp)
 	{
-		_id = registry::get().set(_name, comp, prop)->id;
+		_id = component_loader::set(_name, comp, prop);		
 	}
 
 
@@ -305,24 +360,26 @@ public:
 	}
 
 	template<class... Args >
-	component_instance(const std::string& name, const std::map<std::string, std::string>& prop, Args&&... args):component_instance(name, std::make_shared<component_type>(args...), prop)
+	component_instance(const std::string& name, const properties_t& prop, Args&&... args):component_instance(name, std::make_shared<component_type>(args...), prop)
 	{
 	}
 
 	template<class... Args >
-	component_instance(const std::string& name, std::map<std::string, std::string>&& prop, Args&&... args):component_instance(name, std::make_shared<component_type>(args...), prop)
+	component_instance(const std::string& name, properties_t&& prop, Args&&... args):component_instance(name, std::make_shared<component_type>(args...), prop)
 	{
 	}
 
 	template<class... Args >
-	component_instance(const std::string& name, str_str_init prop, Args&&... args):component_instance(name, std::make_shared<component_type>(args...), prop)
+	component_instance(const std::string& name, properties_init_list_t prop, Args&&... args):component_instance(name, std::make_shared<component_type>(args...), prop)
 	{
 	}
-
 
 	~component_instance()
 	{
-		registry::get().erase(registry::get().find(_id));
+		if(_id!=-1)
+		{
+			registry::erase(_id);
+		}
 	}
 
 	component_ptr& get()
@@ -343,7 +400,7 @@ public:
 private:
 	std::string _name;
 	component_ptr _instance;
-	component_id _id;
+	component_id _id = -1;
 };
 
 } // namespace di
