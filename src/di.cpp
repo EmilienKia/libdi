@@ -36,7 +36,8 @@ component_id registry::_idcount = 0;
 std::vector<registry*> registry::_registries;
 registry registry::_singleton;
 
-registry::registry()
+registry::registry(registry* parent):
+_parent(parent)
 {
 	if(_registries.size()==0)
 	{
@@ -78,124 +79,85 @@ registry& registry::get()
 
 std::size_t registry::size()const
 {
-	return _components.size();
+	return _components.size() + (_parent!=nullptr?_parent->size():0);
 }
 
-component_ptr_t registry::get(component_id id) const
+component_ptr_t registry::find(component_id id) const
 {
-	for(auto comp : _components)
+	for(const registry* reg=this; reg!=nullptr; reg = reg->parent())
 	{
-		if(comp.id == id)
+		for(comp_holder::const_iterator it = reg->_components.begin(); it!=reg->_components.end(); ++it)
 		{
-			return comp.comp;
+			if(it->id == id)
+			{
+				return it->comp;
+			}
 		}
 	}
 	return component_ptr_t();
 }
 
-component_ptr_t registry::get(const std::string& name) const
+component_ptr_t registry::find(const std::string& name) const
 {
-	for(auto comp : _components)
+	for(const registry* reg=this; reg!=nullptr; reg = reg->parent())
 	{
-		if(comp.name == name)
+		for(comp_holder::const_iterator it = reg->_components.begin(); it!=reg->_components.end(); ++it)
 		{
-			return comp.comp;
+			if(it->name == name)
+			{
+				return it->comp;
+			}
 		}
 	}
 	return component_ptr_t();
 }
 
-registry::const_iterator registry::find(component_id id) const
+const component_descriptor* registry::get(component_id id) const
 {
-	return std::find_if(cbegin(), cend(), [&](const component_descriptor& desc){return desc.id == id;});
+	auto it = std::find_if(_components.cbegin(), _components.cend(), [&](const component_descriptor& desc){return desc.id == id;});
+	return it != _components.cend() ? &*it : nullptr;
 }
 
-registry::const_iterator registry::find(const std::string& name) const
+const component_descriptor* registry::get(const std::string& name) const
 {
-	return std::find_if(cbegin(), cend(), [&](const component_descriptor& desc){return desc.name == name;});
+	auto it = std::find_if(_components.cbegin(), _components.cend(), [&](const component_descriptor& desc){return desc.name == name;});
+	return it != _components.cend() ? &*it : nullptr;
 }
 
-registry::const_iterator registry::find(const component* comp) const
+const component_descriptor* registry::get(const component* comp) const
 {
-	return std::find_if(cbegin(), cend(), [&](const component_descriptor& desc){return desc.comp.get() == comp;});
+	auto it = std::find_if(_components.cbegin(), _components.cend(), [&](const component_descriptor& desc){return desc.comp.get() == comp;});
+	return it != _components.cend() ? &*it : nullptr;
 }
 
-registry::const_iterator registry::begin()const
+const component_descriptor& registry::set(const component_descriptor& desc)
 {
-	return _components.begin();
+	return *_components.emplace(_components.end(), _idcount++, desc.name, desc.comp, desc.prop);
 }
 
-registry::const_iterator registry::end()const
+const component_descriptor& registry::set(component_descriptor&& desc)
 {
-	return _components.end();
+	return *_components.emplace(_components.end(), _idcount++, std::move(desc.name), std::move(desc.comp), std::move(desc.prop));
 }
 
-registry::const_iterator registry::registry::cbegin()const
+const component_descriptor& registry::set(const std::string& name, component_ptr_t comp)
 {
-	return _components.cbegin();
+	return *_components.emplace(_components.end(), _idcount++, name, comp);
 }
 
-registry::const_iterator registry::cend()const
+const component_descriptor& registry::set(const std::string& name, component_ptr_t comp, const properties_t& prop)
 {
-	return _components.cend();
+	return *_components.emplace(_components.end(), _idcount++, name, comp, prop);
 }
 
-registry::const_reverse_iterator registry::rbegin()const
+const component_descriptor& registry::set(const std::string& name, component_ptr_t comp, properties_t&& prop)
 {
-	return _components.rbegin();
+	return *_components.emplace(_components.end(), _idcount++, name, comp, prop);
 }
 
-registry::const_reverse_iterator registry::rend()const
+const component_descriptor& registry::set(const std::string& name, component_ptr_t comp, properties_init_list_t prop)
 {
-	return _components.rend();
-}
-
-registry::const_reverse_iterator registry::crbegin()const
-{
-	return _components.crbegin();
-}
-
-registry::const_reverse_iterator registry::crend()const
-{
-	return _components.crend();
-}
-
-registry::const_iterator registry::set(const component_descriptor& desc)
-{
-	return _components.emplace(_components.end(), _idcount++, desc.name, desc.comp, desc.prop);
-}
-
-registry::const_iterator registry::set(component_descriptor&& desc)
-{
-	return _components.emplace(_components.end(), _idcount++, std::move(desc.name), std::move(desc.comp), std::move(desc.prop));
-}
-
-registry::const_iterator registry::set(const std::string& name, component_ptr_t comp)
-{
-	return _components.emplace(_components.end(), _idcount++, name, comp);
-}
-
-registry::const_iterator registry::set(const std::string& name, component_ptr_t comp, const properties_t& prop)
-{
-	return _components.emplace(_components.end(), _idcount++, name, comp, prop);
-}
-
-registry::const_iterator registry::set(const std::string& name, component_ptr_t comp, properties_t&& prop)
-{
-	return _components.emplace(_components.end(), _idcount++, name, comp, prop);
-}
-
-registry::const_iterator registry::set(const std::string& name, component_ptr_t comp, properties_init_list_t prop)
-{
-	return _components.emplace(_components.end(), _idcount++, name, comp, prop);
-}
-
-void registry::erase(registry::const_iterator it)
-{
-	if(it!=end())
-	{
-		_components.erase( _components.begin() + (it-cbegin()) );
-	}
+	return *_components.emplace(_components.end(), _idcount++, name, comp, prop);
 }
 
 void registry::erase(component_id id)
@@ -208,7 +170,7 @@ void registry::erase(component_id id)
 			{
 				if(it->id == id)
 				{
-					reg->erase(it);
+					reg->_components.erase(it);
 				}
 				else
 				{
@@ -250,32 +212,32 @@ void component_loader::pop_registry()
 
 component_id component_loader::set(const component_descriptor& desc)
 {
-	return ( _registries.empty() ? &registry::get() : _registries.top() )->set(desc)->id;
+	return ( _registries.empty() ? &registry::get() : _registries.top() )->set(desc).id;
 }
 
 component_id component_loader::set(component_descriptor&& desc)
 {
-	return ( _registries.empty() ? &registry::get() : _registries.top() )->set(desc)->id;
+	return ( _registries.empty() ? &registry::get() : _registries.top() )->set(desc).id;
 }
 
 component_id component_loader::set(const std::string& name, component_ptr_t comp)
 {
-	return ( _registries.empty() ? &registry::get() : _registries.top() )->set(name, comp)->id;
+	return ( _registries.empty() ? &registry::get() : _registries.top() )->set(name, comp).id;
 }
 
 component_id component_loader::set(const std::string& name, component_ptr_t comp, const properties_t& prop)
 {
-	return ( _registries.empty() ? &registry::get() : _registries.top() )->set(name, comp, prop)->id;
+	return ( _registries.empty() ? &registry::get() : _registries.top() )->set(name, comp, prop).id;
 }
 
 component_id component_loader::set(const std::string& name, component_ptr_t comp, properties_t&& prop)
 {
-	return ( _registries.empty() ? &registry::get() : _registries.top() )->set(name, comp, prop)->id;
+	return ( _registries.empty() ? &registry::get() : _registries.top() )->set(name, comp, prop).id;
 }
 
 component_id component_loader::set(const std::string& name, component_ptr_t comp, properties_init_list_t prop)
 {
-	return ( _registries.empty() ? &registry::get() : _registries.top() )->set(name, comp, prop)->id;
+	return ( _registries.empty() ? &registry::get() : _registries.top() )->set(name, comp, prop).id;
 }
 
 //

@@ -117,20 +117,20 @@ struct component_descriptor
 class registry
 {
 public:
-	registry();
+	registry(registry* parent = nullptr);
 	~registry();
 
 	typedef std::vector<component_descriptor> comp_holder;
-	typedef typename comp_holder::iterator iterator;
-	typedef typename comp_holder::const_iterator const_iterator;
-	typedef typename comp_holder::reverse_iterator reverse_iterator;
-	typedef typename comp_holder::const_reverse_iterator const_reverse_iterator;
-	
+
 	/**
 	 * Retrieve default registry singleton.
 	 */
 	static registry& get();
 
+	registry* parent(){return _parent;}
+	const registry* parent()const{return _parent;}
+	registry& parent(registry* parent){_parent = parent;}
+	
 	/**
 	 * Retrieve number of registered components.
 	 */
@@ -139,62 +139,55 @@ public:
 	/**
 	 * Find a component from its unique id.
 	 */
-	component_ptr_t get(component_id id) const;
-	/**
-	 * Find a component from its name (the first found).
-	 */
-	component_ptr_t get(const std::string& name) const;
-
-	/**
-	 * Find a component from its unique id.
-	 */
-	const_iterator find(component_id id) const;
+	const component_descriptor* get(component_id id) const;
 	/**
 	 * Find a component from it name.
 	 */
-	const_iterator find(const std::string& name) const;
+	const component_descriptor* get(const std::string& name) const;
 	/**
 	 * Find a component from its pointer.
 	 */
-	const_iterator find(const component* comp) const;
-
-	const_iterator begin()const;
-	const_iterator end()const;
-	const_iterator cbegin()const;
-	const_iterator cend()const;
-	const_reverse_iterator rbegin()const;
-	const_reverse_iterator rend()const;
-	const_reverse_iterator crbegin()const;
-	const_reverse_iterator crend()const;
+	const component_descriptor* get(const component* comp) const;
 
 	/**
 	 * Register a new component.
 	 */	
-	const_iterator set(const component_descriptor& desc);
-	const_iterator set(component_descriptor&& desc);
-	const_iterator set(const std::string& name, component_ptr_t comp);
-	const_iterator set(const std::string& name, component_ptr_t comp, const properties_t& prop);
-	const_iterator set(const std::string& name, component_ptr_t comp, properties_t&& prop);
-	const_iterator set(const std::string& name, component_ptr_t comp, properties_init_list_t prop);
+	const component_descriptor& set(const component_descriptor& desc);
+	const component_descriptor& set(component_descriptor&& desc);
+	const component_descriptor& set(const std::string& name, component_ptr_t comp);
+	const component_descriptor& set(const std::string& name, component_ptr_t comp, const properties_t& prop);
+	const component_descriptor& set(const std::string& name, component_ptr_t comp, properties_t&& prop);
+	const component_descriptor& set(const std::string& name, component_ptr_t comp, properties_init_list_t prop);
 	
 	/**
 	 * Unregister an already registered component.
 	 */
-	void erase(const_iterator it);
 	static void erase(component_id id);
 
+	/**
+	 * Find a component from its unique id.
+	 */
+	component_ptr_t find(component_id id) const;
+	/**
+	 * Find a component from its name (the first found).
+	 */
+	component_ptr_t find(const std::string& name) const;
+	
 	/**
 	 * Find a component from a type.
 	 */
 	template<typename T>
-	std::shared_ptr<T> find()
+	std::shared_ptr<T> find()const
 	{
-		for(const_iterator it = begin(); it!=end(); ++it)
+		for(const registry* reg=this; reg!=nullptr; reg = reg->parent())
 		{
-			std::shared_ptr<T> ptr = std::dynamic_pointer_cast<T>(it->comp);
-			if(ptr)
+			for(comp_holder::const_iterator it = reg->_components.begin(); it!=reg->_components.end(); ++it)
 			{
-				return ptr;
+				std::shared_ptr<T> ptr = std::dynamic_pointer_cast<T>(it->comp);
+				if(ptr)
+				{
+					return ptr;
+				}
 			}
 		}
 		return std::shared_ptr<T>();
@@ -204,15 +197,18 @@ public:
 	 * Find a list of components from a type.
 	 */
 	template<typename T>
-	std::vector<std::shared_ptr<T>> find_all()
+	std::vector<std::shared_ptr<T>> find_all()const
 	{
 		std::vector<std::shared_ptr<T>> res;
-		for(const_iterator it = begin(); it!=end(); ++it)
+		for(const registry* reg=this; reg!=nullptr; reg = reg->parent())
 		{
-			std::shared_ptr<T> ptr = std::dynamic_pointer_cast<T>(it->comp);
-			if(ptr)
+			for(comp_holder::const_iterator it = reg->_components.begin(); it!=reg->_components.end(); ++it)
 			{
-				res.emplace_back(ptr);
+				std::shared_ptr<T> ptr = std::dynamic_pointer_cast<T>(it->comp);
+				if(ptr)
+				{
+					res.emplace_back(ptr);
+				}
 			}
 		}
 		return res;		
@@ -222,14 +218,17 @@ public:
 	 * Find a component from a type and a predicate.
 	 */
 	template<typename T, typename UnaryPredicate>
-	std::shared_ptr<T> find_if(UnaryPredicate p)
+	std::shared_ptr<T> find_if(UnaryPredicate p)const
 	{
-		for(const_iterator it = begin(); it!=end(); ++it)
+		for(const registry* reg=this; reg!=nullptr; reg = reg->parent())
 		{
-			std::shared_ptr<T> ptr = std::dynamic_pointer_cast<T>(it->comp);
-			if(ptr && p(*it))
+			for(comp_holder::const_iterator it = reg->_components.begin(); it!=reg->_components.end(); ++it)
 			{
-				return ptr;
+				std::shared_ptr<T> ptr = std::dynamic_pointer_cast<T>(it->comp);
+				if(ptr && p(*it))
+				{
+					return ptr;
+				}
 			}
 		}
 		return std::shared_ptr<T>();
@@ -239,18 +238,83 @@ public:
 	 * Find a list of components from a type and a predicate.
 	 */
 	template<typename T, typename UnaryPredicate>
-	std::vector<std::shared_ptr<T>> find_all_if(UnaryPredicate p)
+	std::vector<std::shared_ptr<T>> find_all_if(UnaryPredicate p)const
 	{
 		std::vector<std::shared_ptr<T>> res;
-		for(const_iterator it = begin(); it!=end(); ++it)
+		for(const registry* reg=this; reg!=nullptr; reg = reg->parent())
 		{
-			std::shared_ptr<T> ptr = std::dynamic_pointer_cast<T>(it->comp);
-			if(ptr && p(*it))
+			for(comp_holder::const_iterator it = reg->_components.begin(); it!=reg->_components.end(); ++it)
 			{
-				res.emplace_back(ptr);
+				std::shared_ptr<T> ptr = std::dynamic_pointer_cast<T>(it->comp);
+				if(ptr && p(*it))
+				{
+					res.emplace_back(ptr);
+				}
 			}
 		}
 		return res;
+	}
+
+	/**
+	 * Iterate on components and recursivly.
+	 */
+	template<typename Action>
+	void foreach(Action a)const
+	{
+		for(const registry* reg=this; reg!=nullptr; reg = reg->parent())
+		{
+			for(comp_holder::const_iterator it = reg->_components.begin(); it!=reg->_components.end(); ++it)
+			{
+				a(*it);
+			}
+		}
+	}
+
+	template<typename UnaryPredicate, typename Action>
+	void foreach_if(UnaryPredicate p, Action a)const
+	{
+		for(const registry* reg=this; reg!=nullptr; reg = reg->parent())
+		{
+			for(comp_holder::const_iterator it = reg->_components.begin(); it!=reg->_components.end(); ++it)
+			{
+				if(p(*it))
+				{
+					a(*it);
+				}
+			}
+		}
+	}
+
+	template<typename T, typename Action>
+	void foreach(Action a)const
+	{
+		for(const registry* reg=this; reg!=nullptr; reg = reg->parent())
+		{
+			for(comp_holder::const_iterator it = reg->_components.begin(); it!=reg->_components.end(); ++it)
+			{
+				std::shared_ptr<T> ptr = std::dynamic_pointer_cast<T>(it->comp);
+				if(ptr)
+				{
+					a(*it);
+				}
+			}
+		}
+	}
+
+	template<typename T, typename UnaryPredicate, typename Action>
+	void foreach_if(UnaryPredicate p, Action a)const
+	{
+		for(const registry* reg=this; reg!=nullptr; reg = reg->parent())
+		{
+			for(comp_holder::const_iterator it = reg->_components.begin(); it!=reg->_components.end(); ++it)
+			{
+				std::shared_ptr<T> ptr = std::dynamic_pointer_cast<T>(it->comp);
+				if(ptr && p(*it))
+				{
+					a(*it);
+				}
+			}
+		}
 	}
 	
 	/**
@@ -259,6 +323,7 @@ public:
 	void load(const std::string& path);
 	
 private:
+	registry*   _parent;
 	comp_holder _components;
 	static component_id _idcount;
 	static std::vector<registry*> _registries;

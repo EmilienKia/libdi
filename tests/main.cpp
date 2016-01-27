@@ -111,7 +111,7 @@ void dumpRegistry(di::registry& reg)
 	std::cout << "Registry: " << reg.size()  << std::endl;
 
 	{
-		for(auto& comp : reg)
+		reg.foreach([](const di::component_descriptor& comp)
 		{
 			std::cout
 				<< comp.id << " "
@@ -122,7 +122,7 @@ void dumpRegistry(di::registry& reg)
 			{
 				std::cout << "  " << prop.first << " : " << prop.second << std::endl;
 			}
-		}
+		});
 	}
 }
 
@@ -141,7 +141,7 @@ int main()
 
 	
 	std::cout << "===== LOADED =====" << std::endl;
-	di::registry reg;
+	di::registry reg(&di::registry::get());
 	reg.load("module01");
 	reg.load("module02");
 	dumpRegistry(reg);
