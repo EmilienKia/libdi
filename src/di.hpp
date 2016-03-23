@@ -1,19 +1,19 @@
 /* -*- Mode: C++; indent-tabs-mode: t; c-basic-offset: 4; tab-width: 4 -*-  */
 /*
  * di.hpp
- * 
+ *
  * Copyright (C) 2016 Emilien Kia <emilien.kia@gmail.com>
  *
  * libdi is free software: you can redistribute it and/or modify it
  * under the terms of the GNU Lesser General Public License as published
  * by the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * libdi is distributed in the hope that it will be useful, but
  * WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU Lesser General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Lesser General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.";
  */
@@ -97,7 +97,7 @@ struct component_descriptor
 		prop = desc.prop;
 		return *this;
 	}
-		
+
 	component_descriptor& operator = (component_descriptor&& desc)
 	{
 		id = desc.id;
@@ -107,7 +107,7 @@ struct component_descriptor
 		return *this;
 	}
 
-	
+
 
 };
 
@@ -131,7 +131,7 @@ public:
 	registry* parent(){return _parent;}
 	const registry* parent()const{return _parent;}
 	registry& parent(registry* parent){_parent = parent;}
-	
+
 	/**
 	 * Retrieve number of registered components.
 	 */
@@ -152,14 +152,14 @@ public:
 
 	/**
 	 * Register a new component.
-	 */	
+	 */
 	const component_descriptor& set(const component_descriptor& desc);
 	const component_descriptor& set(component_descriptor&& desc);
 	const component_descriptor& set(const std::string& name, component_ptr_t comp);
 	const component_descriptor& set(const std::string& name, component_ptr_t comp, const properties_t& prop);
 	const component_descriptor& set(const std::string& name, component_ptr_t comp, properties_t&& prop);
 	const component_descriptor& set(const std::string& name, component_ptr_t comp, properties_init_list_t prop);
-	
+
 	/**
 	 * Unregister an already registered component.
 	 */
@@ -173,7 +173,7 @@ public:
 	 * Find a component from its name (the first found).
 	 */
 	component_ptr_t find(const std::string& name) const;
-	
+
 	/**
 	 * Find a component from a type.
 	 */
@@ -212,7 +212,7 @@ public:
 				}
 			}
 		}
-		return res;		
+		return res;
 	}
 
 	/**
@@ -317,12 +317,7 @@ public:
 			}
 		}
 	}
-	
-	/**
-	 * Load a library (and register all component instances).
-	 */
-	void load(const std::string& path);
-	
+
 private:
 	registry*   _parent;
 	comp_holder _components;
@@ -333,14 +328,19 @@ private:
 
 
 /**
- * Helper to manage just loaded components from modules.
- * Should not be used by users.
+ * Base class for loading components from external modules.
  */
 class component_loader
 {
-public:	
+protected:
+	template <typename C> friend class component_instance; // Only instances can self register through component_loader::set methods.
+
+	/** Cannot be used directly, use derivated instead.*/
+	component_loader() = default;
+
 	/**
 	 * Add a new component.
+	 * Should only be called by component_instance
 	 */
 	static component_id set(const component_descriptor& desc);
 	static component_id set(component_descriptor&& desc);
@@ -349,17 +349,31 @@ public:
 	static component_id set(const std::string& name, component_ptr_t comp, properties_t&& prop);
 	static component_id set(const std::string& name, component_ptr_t comp, properties_init_list_t prop);
 
-	static void push_registry(registry& reg);
-	static void pop_registry();
-
+	/**
+	 * Global registry stack locker.
+	 * Should only be used by component_loader and derivated.
+	 */
 	class locker
 	{
 	public:
 		locker(registry& reg);
 		~locker();
 	};
-	
+
+	/**
+	 * Push a registry on top of registry stack.
+	 * Should only be used by component_loader and derivated or by global registry stack locker.
+	 */
+	static void push_registry(registry& reg);
+
+	/**
+	 * Pop a registry from top of registry stack.
+	 * Should only be used by component_loader and derivated or by global registry stack locker.
+	 */
+	static void pop_registry();
+
 private:
+	/** Global registry stack locker. */
 	static std::stack<registry*> _registries;
 };
 
@@ -377,7 +391,7 @@ public:
 	component_instance():component_instance(typeid(component_type).name(), std::make_shared<component_type>())
 	{
 	}
-	
+
 	component_instance(const std::string& name):component_instance(name, std::make_shared<component_type>())
 	{
 	}
@@ -393,7 +407,7 @@ public:
 	component_instance(component_ptr comp):component_instance(typeid(component_type).name(), comp)
 	{
 	}
-	
+
 	component_instance(const std::string& name, component_ptr comp):
 		_name(name),_instance(comp)
 	{
@@ -403,19 +417,19 @@ public:
 	component_instance(const std::string& name, component_ptr comp, const properties_t& prop):
 		_name(name),_instance(comp)
 	{
-		_id = component_loader::set(_name, comp, prop);		
+		_id = component_loader::set(_name, comp, prop);
 	}
 
 	component_instance(const std::string& name, component_ptr comp, properties_t&& prop):
 		_name(name),_instance(comp)
 	{
-		_id = component_loader::set(_name, comp, prop);		
+		_id = component_loader::set(_name, comp, prop);
 	}
 
 	component_instance(const std::string& name, component_ptr comp, properties_init_list_t& prop):
 		_name(name),_instance(comp)
 	{
-		_id = component_loader::set(_name, comp, prop);		
+		_id = component_loader::set(_name, comp, prop);
 	}
 
 
@@ -468,6 +482,34 @@ private:
 	component_ptr _instance;
 	component_id _id = -1;
 };
+
+
+
+/**
+ * Simple component loader to load components from external libraries.
+ */
+class simple_component_loader : public component_loader
+{
+public:
+	simple_component_loader(registry& reg);
+
+	/**
+	 * Load a library (and register all component instances).
+	 * Loading is done smartly with intending to decorate lib name (prefix with lib,
+	 * extension depending of platform...)
+	 * \param filename Path of module to load.
+	 */
+	void load(const std::string& filename);
+
+
+
+private:
+	/** Registry where to load components. */
+	registry& _reg;
+};
+
+
+
 
 } // namespace di
 #endif // _DI_HPP_

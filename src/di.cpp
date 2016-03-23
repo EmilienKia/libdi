@@ -1,23 +1,23 @@
 /* -*- Mode: C++; indent-tabs-mode: t; c-basic-offset: 4; tab-width: 4 -*-  */
 /*
  * di.cpp
- * 
+ *
  * Copyright (C) 2016 Emilien Kia <emilien.kia@gmail.com>
  *
  * libdi is free software: you can redistribute it and/or modify it
  * under the terms of the GNU Lesser General Public License as published
  * by the Free Software Foundation, either version 3 of the License, or
  * (at your option) any later version.
- * 
+ *
  * libdi is distributed in the hope that it will be useful, but
  * WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See the GNU Lesser General Public License for more details.
- * 
+ *
  * You should have received a copy of the GNU Lesser General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.";
  */
-   
+
 #include "di.hpp"
 
 #include <algorithm>
@@ -49,7 +49,7 @@ _parent(parent)
 	}
 	_registries.push_back(this);
 }
-		
+
 registry::~registry()
 {
 	for(auto it = _registries.begin(); it!=_registries.end();)
@@ -72,7 +72,7 @@ registry::~registry()
 		}
 	}
 }
-	
+
 registry& registry::get()
 {
 	return registry::_singleton;
@@ -182,21 +182,8 @@ void registry::erase(component_id id)
 	}
 }
 
-void registry::load(const std::string& path)
-{
-	component_loader::locker lock(*this);
-	
-	lt_dlhandle handle = lt_dlopenext(path.c_str());
-	if(handle==nullptr)
-	{
-		std::cerr << "Error while loading " << path << std::endl;
-	}
-}
-
-
-
 //
-// component_loader 
+// component_loader
 //
 
 std::stack<registry*> component_loader::_registries;
@@ -255,6 +242,26 @@ component_loader::locker::~locker()
 	component_loader::pop_registry();
 }
 
+
+//
+// simple_component_loader
+//
+
+simple_component_loader::simple_component_loader(registry& reg):
+_reg(reg)
+{
+}
+
+void simple_component_loader::load(const std::string& path)
+{
+	component_loader::locker lock(_reg);
+
+	lt_dlhandle handle = lt_dlopenext(path.c_str());
+	if(handle==nullptr)
+	{
+		std::cerr << "Error while loading " << path << std::endl;
+	}
+}
 
 
 

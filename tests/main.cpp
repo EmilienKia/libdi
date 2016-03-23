@@ -143,8 +143,10 @@ int main()
 	
 	std::cout << "===== LOADED =====" << std::endl;
 	di::registry reg(&di::registry::get());
-	reg.load("module01");
-	reg.load("module02");
+
+	di::simple_component_loader loader(reg);
+	loader.load("module01");
+	loader.load("module02");
 	dumpRegistry(reg);
 	std::cout << std::endl << std::endl;
 	
