@@ -22,6 +22,7 @@
 #define _DI_HPP_
 
 #include <cstddef>
+#include <functional>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -501,7 +502,30 @@ public:
 	 */
 	void load(const std::string& filename);
 
+	/**
+	 * Load libraries (and register all component instances).
+	 * \param filenames List of path of modules to load.
+	 */
+	void load(const std::vector<std::string>& filenames);
 
+	/**
+	 * Load all libraries at a specified path.
+	 * \param dirname Directory where to search libraries.
+	 */
+	void load_all(const std::string& dirname);
+
+	/**
+	 * Function type definition to filter libraries.
+	 * Take library path in parameter and should return true to take the library file in account.
+	 */
+	typedef std::function<bool(const std::string&)> filter_t;
+
+	/**
+	 * Load all libraries at a specified path.
+	 * \param dirname Directory where to search libraries.
+	 * \param filter Filter function to restrict loaded libraries.
+	 */
+	void load_all(const std::string& dirname, filter_t& filter);
 
 private:
 	/** Registry where to load components. */

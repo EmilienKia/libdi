@@ -252,17 +252,64 @@ _reg(reg)
 {
 }
 
-void simple_component_loader::load(const std::string& path)
+void simple_component_loader::load(const std::string& filename)
 {
 	component_loader::locker lock(_reg);
-
-	lt_dlhandle handle = lt_dlopenext(path.c_str());
+	lt_dlhandle handle = lt_dlopenext(filename.c_str());
 	if(handle==nullptr)
 	{
-		std::cerr << "Error while loading " << path << std::endl;
+		std::cerr << "Error while loading " << filename << std::endl;
 	}
 }
 
+void simple_component_loader::load(const std::vector<std::string>& filenames)
+{
+	component_loader::locker lock(_reg);
+	for(std::string filename : filenames)
+	{
+		lt_dlhandle handle = lt_dlopenext(filename.c_str());
+		if(handle==nullptr)
+		{
+			std::cerr << "Error while loading " << filename << " : " << lt_dlerror() << std::endl;
+		}
+	}
+}
 
+static int load_all_cb(const char *filename, std::vector<std::string>* paths)
+{
+	paths->push_back(filename);
+	return 0;
+}
+
+void simple_component_loader::load_all(const std::string& dirname)
+{
+	std::vector<std::string> paths;
+	lt_dlforeachfile(dirname.c_str(), (int(*)(const char *, void*))load_all_cb, (void*)&paths);
+	load(paths);
+}
+
+struct load_all_test_st
+{
+	simple_component_loader::filter_t& filter;
+	std::vector<std::string> paths;
+};
+
+static int load_all_test_cb(const char *filename, load_all_test_st* st)
+{
+	std::string path(filename);
+	if(st->filter(path))
+	{
+		st->paths.push_back(path);
+	}
+	return 0;
+}
+
+void simple_component_loader::load_all(const std::string& dirname, filter_t& filter)
+{
+	load_all_test_st test{filter};
+	lt_dlforeachfile(dirname.c_str(), (int(*)(const char *, void*))load_all_test_cb, (void*)&test);
+	load(test.paths);
+
+}
 
 } // namespace di
