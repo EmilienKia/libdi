@@ -1,5 +1,7 @@
 
 
+src/didump
+
 **/Makefile
 **/Makefile.in
 **/.deps/
