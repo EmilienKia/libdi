@@ -499,8 +499,9 @@ public:
 	 * Loading is done smartly with intending to decorate lib name (prefix with lib,
 	 * extension depending of platform...)
 	 * \param filename Path of module to load.
+	 * \return true if module correctly loaded (or previously loaded).
 	 */
-	void load(const std::string& filename);
+	bool load(const std::string& filename);
 
 	/**
 	 * Load libraries (and register all component instances).

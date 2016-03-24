@@ -252,14 +252,10 @@ _reg(reg)
 {
 }
 
-void simple_component_loader::load(const std::string& filename)
+bool simple_component_loader::load(const std::string& filename)
 {
 	component_loader::locker lock(_reg);
-	lt_dlhandle handle = lt_dlopenext(filename.c_str());
-	if(handle==nullptr)
-	{
-		std::cerr << "Error while loading " << filename << std::endl;
-	}
+	return lt_dlopenext(filename.c_str()) != nullptr;
 }
 
 void simple_component_loader::load(const std::vector<std::string>& filenames)

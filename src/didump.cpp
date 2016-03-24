@@ -36,17 +36,18 @@ void introspect(const std::string& filename)
 {
 	di::registry reg;
 	di::simple_component_loader loader(reg);
-	loader.load(filename);
-
-	std::cout << filename << std::endl << std::endl;
-	reg.foreach([](const di::component_descriptor& desc){
-			std::cout << '\t' << desc.name << std::endl;
-			for(const auto& prop : desc.prop)
-			{
-				std::cout << '\t' << '\t' << prop.first << " = " << prop.second << std::endl;
-			}
-			std::cout << std::endl;
-		});
+	if(loader.load(filename))
+	{
+		std::cout << filename << std::endl << std::endl;
+		reg.foreach([](const di::component_descriptor& desc){
+				std::cout << '\t' << desc.name << std::endl;
+				for(const auto& prop : desc.prop)
+				{
+					std::cout << '\t' << '\t' << prop.first << "=" << prop.second << std::endl;
+				}
+				std::cout << std::endl;
+			});
+	}
 }
 
 void introspect_path(const fs::path& path, bool recursive)
