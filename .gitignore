@@ -1,6 +1,7 @@
 
 
 src/didump
+**/*.didef
 
 **/Makefile
 **/Makefile.in

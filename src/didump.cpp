@@ -23,6 +23,7 @@
 
 #include "di.hpp"
 
+#include <fstream>
 #include <iostream>
 
 #include <boost/program_options.hpp>
@@ -32,21 +33,37 @@ namespace fs = boost::filesystem;
 
 #define DIDUMP_NAME		"didump"
 
+bool generate_didef = false;
+
 void introspect(const std::string& filename)
 {
 	di::registry reg;
 	di::simple_component_loader loader(reg);
-	if(loader.load(filename))
+	if(loader.load(filename) && reg.size()>0)
 	{
-		std::cout << filename << std::endl << std::endl;
+		std::cout << filename << ':' << std::endl;
 		reg.foreach([](const di::component_descriptor& desc){
-				std::cout << '\t' << desc.name << std::endl;
+				std::cout << desc.name << std::endl;
 				for(const auto& prop : desc.prop)
 				{
-					std::cout << '\t' << '\t' << prop.first << "=" << prop.second << std::endl;
+					std::cout << '\t' << prop.first << "=" << prop.second << std::endl;
 				}
 				std::cout << std::endl;
 			});
+
+		if(generate_didef)
+		{
+			std::ofstream file(filename+".didef", std::ios_base::trunc);
+			file << "(" << filename << ")" << std::endl;
+			reg.foreach([&file](const di::component_descriptor& desc){
+					file << '[' << desc.name << ']'<< std::endl;
+					for(const auto& prop : desc.prop)
+					{
+						file << prop.first << "=" << prop.second << std::endl;
+					}
+					file << std::endl;
+				});
+		}
 	}
 }
 
@@ -97,6 +114,11 @@ int main(int argc, const char** argv)
 	po::positional_options_description p;
 	p.add("input-file", -1);
 
+	po::options_description reports("Report generation");
+	reports.add_options()
+		("def", "Generate di definition files (.didef)")
+	;
+
 	po::options_description others("Other options");
 	others.add_options()
 		("help,h",    "display this help and exit")
@@ -104,21 +126,19 @@ int main(int argc, const char** argv)
 	;
 
 	po::options_description cmdline_options;
-	cmdline_options.add(inputs).add(others);
+	cmdline_options.add(inputs).add(reports).add(others);
 
 	po::variables_map vm;
 	po::store(po::command_line_parser(argc, argv).options(cmdline_options).positional(p).run(), vm);
 	po::notify(vm);
 
 	if (vm.count("help")) {
-		po::options_description help_options;
-		help_options.add(inputs).add(others);
 		std::cout
 			<< "Usage: " << DIDUMP_NAME << " [options]... [file]..." << std::endl
 			<< "   or: " << DIDUMP_NAME << " [options]... -i <file>" << std::endl
 			<< "   or: " << DIDUMP_NAME << " [options]... -d <directory>" << std::endl
 			<< "List libdi declared dependencies in specified modules." << std::endl
-			<< help_options << std::endl;
+			<< cmdline_options << std::endl;
 		return 1;
 	}
 
@@ -131,6 +151,12 @@ int main(int argc, const char** argv)
 			<< "There is NO WARRANTY, to the extent permitted by law." << std::endl
 			;
 		return 1;
+	}
+
+	if(vm.count("def")>0)
+	{
+		// Flag generate definition files (.didef)
+		generate_didef = true;
 	}
 
 	// Directory traversal
