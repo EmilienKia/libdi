@@ -33,90 +33,23 @@ namespace fs = boost::filesystem;
 
 #define DIDUMP_NAME		"didump"
 
-bool generate_didef = false;
-
-void introspect(const std::string& filename)
-{
-	di::registry reg;
-	di::simple_component_loader loader(reg);
-	if(loader.load(filename) && reg.size()>0)
-	{
-		std::cout << filename << ':' << std::endl;
-		reg.foreach([](const di::component_descriptor& desc){
-				std::cout << desc.name << std::endl;
-				for(const auto& prop : desc.prop)
-				{
-					std::cout << '\t' << prop.first << "=" << prop.second << std::endl;
-				}
-				std::cout << std::endl;
-			});
-
-		if(generate_didef)
-		{
-			std::ofstream file(filename+".didef", std::ios_base::trunc);
-			file << "(" << filename << ")" << std::endl;
-			reg.foreach([&file](const di::component_descriptor& desc){
-					file << '[' << desc.name << ']'<< std::endl;
-					for(const auto& prop : desc.prop)
-					{
-						file << prop.first << "=" << prop.second << std::endl;
-					}
-					file << std::endl;
-				});
-		}
-	}
-}
-
-void introspect_path(const fs::path& path, bool recursive)
-{
-	if(fs::is_regular_file(path))
-	{
-		introspect(path.string());
-	}
-	else if(fs::is_directory(path))
-	{
-		std::vector<fs::path> paths;
-		if(recursive)
-		{
-			for(fs::recursive_directory_iterator dir(path); dir!=fs::recursive_directory_iterator(); dir++)
-			{
-				paths.push_back(fs::directory_entry(*dir).path());
-			}
-		}
-		else
-		{
-			for(fs::directory_iterator dir(path); dir!=fs::directory_iterator(); dir++)
-			{
-				paths.push_back(fs::directory_entry(*dir).path());
-			}
-		}
-		for(fs::path& p : paths)
-		{
-			if(fs::is_regular_file(p))
-			{
-				introspect(p.string());
-			}
-		}
-	}
-}
-
 int main(int argc, const char** argv)
 {
-	std::vector<std::string> files;
+	std::vector<std::string> filenames;
 	std::string directory;
 
 	po::options_description inputs("Input files or directory");
 	inputs.add_options()
-		("input-file,i", po::value< std::vector<std::string> >(&files), "input file")
-		("directory,d",  po::value< std::string >(&directory),          "directory to introspect")
-		("recursive,r",                                                 "introspect subdirectories recursively")
+		("input,i", po::value< std::vector<std::string> >(&filenames), "input file or directory")
+		("recursive,R",                                                "introspect subdirectories recursively")
 	;
 	po::positional_options_description p;
-	p.add("input-file", -1);
+	p.add("input", -1);
 
 	po::options_description reports("Report generation");
 	reports.add_options()
-		("def", "Generate di definition files (.didef)")
+		("def,d", "Generate di definition files (.didef)")
+		("rep,r", "Generate di repository definition file (.direp)")
 	;
 
 	po::options_description others("Other options");
@@ -134,9 +67,7 @@ int main(int argc, const char** argv)
 
 	if (vm.count("help")) {
 		std::cout
-			<< "Usage: " << DIDUMP_NAME << " [options]... [file]..." << std::endl
-			<< "   or: " << DIDUMP_NAME << " [options]... -i <file>" << std::endl
-			<< "   or: " << DIDUMP_NAME << " [options]... -d <directory>" << std::endl
+			<< "Usage: " << DIDUMP_NAME << " [options]... [file-or-directory]..." << std::endl
 			<< "List libdi declared dependencies in specified modules." << std::endl
 			<< cmdline_options << std::endl;
 		return 1;
@@ -153,24 +84,103 @@ int main(int argc, const char** argv)
 		return 1;
 	}
 
+	// Flag generate definition files (.didef)
+	bool generate_didef = false;
 	if(vm.count("def")>0)
 	{
-		// Flag generate definition files (.didef)
 		generate_didef = true;
 	}
 
-	// Directory traversal
-	if(!directory.empty())
+	// Flag generate repository definition file
+	bool generate_direp = false;
+	if(vm.count("rep")>0)
 	{
-		bool recursive = vm.count("recursive")>0;
-		introspect_path(fs::path(directory), recursive);
-
+		generate_direp = true;
 	}
-	else // File enumeration
+	std::ofstream repository_file;
+	if(generate_direp)
 	{
-		for(std::string file : files)
+		repository_file.open("./.direp", std::ios_base::trunc);
+	}
+
+	// If no specified file, assume process current directory.
+	if(filenames.size()==0)
+	{
+		filenames.push_back(".");
+	}
+
+	// List of paths to introspect
+	std::vector<fs::path> paths;
+	bool recursive = vm.count("recursive")>0;
+	for(std::string filename : filenames)
+	{
+		fs::path path(filename);
+		if(fs::is_regular_file(path))
 		{
-			introspect(file);
+			paths.push_back(path);
+		}
+		else if(fs::is_directory(path))
+		{
+			if(recursive)
+			{
+				for(fs::recursive_directory_iterator dir(path); dir!=fs::recursive_directory_iterator(); dir++)
+				{
+					paths.push_back(fs::directory_entry(*dir).path());
+				}
+			}
+			else
+			{
+				for(fs::directory_iterator dir(path); dir!=fs::directory_iterator(); dir++)
+				{
+					paths.push_back(fs::directory_entry(*dir).path());
+				}
+			}
+		}
+	}
+
+	// Introspect all files
+	for(const fs::path& path : paths)
+	{
+		std::string filename = path.string();
+		di::registry reg;
+		di::simple_component_loader loader(reg);
+		if(loader.load(filename) && reg.size()>0)
+		{
+			std::cout << filename << ':' << std::endl;
+			reg.foreach([](const di::component_descriptor& desc){
+					std::cout << desc.name << std::endl;
+					for(const auto& prop : desc.prop)
+					{
+						std::cout << '\t' << prop.first << "=" << prop.second << std::endl;
+					}
+					std::cout << std::endl;
+				});
+
+			if(generate_didef)
+			{
+				std::ofstream file(filename+".didef", std::ios_base::trunc);
+				file << "(" << filename << ")" << std::endl;
+				reg.foreach([&file](const di::component_descriptor& desc){
+						file << '[' << desc.name << ']'<< std::endl;
+						for(const auto& prop : desc.prop)
+						{
+							file << prop.first << "=" << prop.second << std::endl;
+						}
+						file << std::endl;
+					});
+			}
+			if(generate_direp)
+			{
+				repository_file << "(" << filename << ")" << std::endl;
+				reg.foreach([&repository_file](const di::component_descriptor& desc){
+						repository_file << '[' << desc.name << ']'<< std::endl;
+						for(const auto& prop : desc.prop)
+						{
+							repository_file << prop.first << "=" << prop.second << std::endl;
+						}
+						repository_file << std::endl;
+					});
+			}
 		}
 	}
 
